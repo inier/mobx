@@ -11,6 +11,7 @@ import {
     untrackedEnd,
     untrackedStart
 } from "../internal"
+import { allowStateReadsStart, allowStateReadsEnd } from "./derivation"
 
 export interface IAction {
     isMobxAction: boolean
@@ -50,6 +51,7 @@ export function executeAction(actionName: string, fn: Function, scope?: any, arg
 interface IActionRunInfo {
     prevDerivation: IDerivation | null
     prevAllowStateChanges: boolean
+    prevAllowStateReads: boolean
     notifySpy: boolean
     startTime: number
 }
@@ -77,9 +79,11 @@ function startAction(
     const prevDerivation = untrackedStart()
     startBatch()
     const prevAllowStateChanges = allowStateChangesStart(true)
+    const prevAllowStateReads = allowStateReadsStart(true)
     return {
         prevDerivation,
         prevAllowStateChanges,
+        prevAllowStateReads,
         notifySpy,
         startTime
     }
@@ -87,6 +91,7 @@ function startAction(
 
 function endAction(runInfo: IActionRunInfo) {
     allowStateChangesEnd(runInfo.prevAllowStateChanges)
+    allowStateReadsEnd(runInfo.prevAllowStateReads)
     endBatch()
     untrackedEnd(runInfo.prevDerivation)
     if (runInfo.notifySpy && process.env.NODE_ENV !== "production")
