@@ -198,9 +198,7 @@ export function trackDerivedFunction<T>(derivation: IDerivation, f: () => T, con
     globalState.trackingDerivation = prevTracking
     bindDependencies(derivation)
 
-    if (derivation.observing.length === 0) {
-        warnAboutDerivationWithoutDependencies(derivation)
-    }
+    warnAboutDerivationWithoutDependencies(derivation)
 
     allowStateReadsEnd(prevAllowStateReads)
 
@@ -209,6 +207,9 @@ export function trackDerivedFunction<T>(derivation: IDerivation, f: () => T, con
 
 function warnAboutDerivationWithoutDependencies(derivation: IDerivation) {
     if (process.env.NODE_ENV === "production") return
+
+    if (derivation.observing.length !== 0) return
+
     if (globalState.reactionRequiresObservable || derivation.requiresObservable) {
         console.warn(
             `[mobx] Derivation ${
