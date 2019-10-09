@@ -52,6 +52,7 @@ function createPropertyInitializerDescriptor(
 }
 
 export function initializeInstance(target: any)
+// 初始化 base 空对象会调用，操作该对象也会调用
 export function initializeInstance(target: DecoratorTarget) {
     if (target[mobxDidRunLazyInitializersSymbol] === true) return
     const decorators = target[mobxPendingDecorators]
@@ -64,13 +65,19 @@ export function initializeInstance(target: DecoratorTarget) {
     }
 }
 
+// 该方法为生产装饰器工厂的函数，主要是根据不同的 enhancer 生产对应类型的装饰器工厂
 export function createPropDecorator(
     propertyInitiallyEnumerable: boolean,
-    propertyCreator: PropertyCreator
+    propertyCreator: PropertyCreator // 装饰器的代理函数
 ) {
+    // 装饰器工厂，生成一类的由该 enhancer 完成“劫持操作”的装饰器：@observable，@computed ...
     return function decoratorFactory() {
         let decoratorArguments: any[]
 
+        // class A {
+        //     @observable(decoratorArguments) a = 1 
+        // }
+        // NOTE: 真正的装饰器函数
         const decorator = function decorate(
             target: DecoratorTarget,
             prop: string,
@@ -80,6 +87,7 @@ export function createPropDecorator(
             // as the instance to apply the decorator to equals the target
         ) {
             if (applyImmediately === true) {
+                // 传进来的为装饰器的代理函数，所以传参会相近且多余 decorator
                 propertyCreator(target, prop, descriptor, target, decoratorArguments)
                 return null
             }
@@ -91,20 +99,25 @@ export function createPropDecorator(
             }
             target[mobxPendingDecorators]![prop] = {
                 prop,
-                propertyCreator,
+                propertyCreator, // 在 initializeInstance 中调用
                 descriptor,
                 decoratorTarget: target,
                 decoratorArguments
             }
+            // 返回 descriptor
             return createPropertyInitializerDescriptor(prop, propertyInitiallyEnumerable)
         }
 
+        // @decorator
         if (quacksLikeADecorator(arguments)) {
-            // @decorator
             decoratorArguments = EMPTY_ARRAY
+            // 如果是没加括号形式，则直接执行，让 decoratorFactory 返回 descriptor
+            // NOTE: 所以可看成 decoratorFactory 代理 decorator 的功能
             return decorator.apply(null, arguments as any)
         } else {
-            // @decorator(args)
+            // @decorator(args) // args 为 function decorate 的参数
+            // 直接返回 decorator（即让 decoratorFactory 执行后返回 decorator）
+            // 具体该 decorator 的执行（即返回 descriptor）就是在我们申明的地方
             decoratorArguments = Array.prototype.slice.call(arguments)
             return decorator
         }

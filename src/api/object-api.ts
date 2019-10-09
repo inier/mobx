@@ -22,6 +22,7 @@ export function keys<T>(set: ObservableSet<T>): ReadonlyArray<T>
 export function keys<T extends Object>(obj: T): ReadonlyArray<PropertyKey>
 export function keys(obj: any): any {
     if (isObservableObject(obj)) {
+        // $mobx 在 src/types/observableobject.ts 366 行 定义，拿到该对象的 adm
         return ((obj as any) as IIsObservableObject)[$mobx].getKeys()
     }
     if (isObservableMap(obj)) {
@@ -65,7 +66,9 @@ export function values(obj: any): string[] {
 export function entries<K, T>(map: ObservableMap<K, T>): ReadonlyArray<[K, T]>
 export function entries<T>(set: ObservableSet<T>): ReadonlyArray<[T, T]>
 export function entries<T>(ar: IObservableArray<T>): ReadonlyArray<[number, T]>
-export function entries<T = any>(obj: T): ReadonlyArray<[string, T extends object ? T[keyof T] : any]>
+export function entries<T = any>(
+    obj: T
+): ReadonlyArray<[string, T extends object ? T[keyof T] : any]>
 export function entries(obj: any): any {
     if (isObservableObject(obj)) {
         return keys(obj).map(key => [key, obj[key]])
@@ -91,6 +94,9 @@ export function set<T>(obj: ObservableSet<T>, value: T)
 export function set<T>(obj: IObservableArray<T>, index: number, value: T)
 export function set<T extends Object>(obj: T, values: { [key: string]: any })
 export function set<T extends Object>(obj: T, key: PropertyKey, value: any)
+
+// 工具方法：set as mobxSet
+// src/api/observable.ts 的 createObservable 和 src/types/modifiers.ts 的 deepEnhancer 调用
 export function set(obj: any, key: any, value?: any): void {
     if (arguments.length === 2 && !isObservableSet(obj)) {
         startBatch()
@@ -104,10 +110,12 @@ export function set(obj: any, key: any, value?: any): void {
     }
     if (isObservableObject(obj)) {
         const adm = ((obj as any) as IIsObservableObject)[$mobx]
-        const existingObservable = adm.values.get(key)
+        const existingObservable = adm.values.get(key) // 是否能通过 key 拿到 ObservableValue
         if (existingObservable) {
+            // 如果该 obj 的 key 已经劫持过，则直接赋值（新 value 如果是 obj，在 write 中会劫持后再赋值）
             adm.write(key, value)
         } else {
+            // obj[key] 先劫持后再赋值
             adm.addObservableProp(key, value, adm.defaultEnhancer)
         }
     } else if (isObservableMap(obj)) {

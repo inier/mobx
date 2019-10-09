@@ -58,6 +58,9 @@ export class ObservableValue<T> extends Atom
         private equals: IEqualsComparer<any> = comparer.default
     ) {
         super(name)
+        // 属性值管理器围绕 value 展开
+        // NOTE: 正式开始递归劫持（走到这，当前第一轮已经走完，后面重复已经打通的部分即可）
+        // 实际调用的是 src/types/modifiers.ts 的 deepEnhancer
         this.value = enhancer(value, undefined, name)
         if (notifySpy && isSpyEnabled() && process.env.NODE_ENV !== "production") {
             // only notify spy if this is a stand-alone observable
@@ -99,6 +102,7 @@ export class ObservableValue<T> extends Atom
             if (!change) return globalState.UNCHANGED
             newValue = change.newValue
         }
+        // 将 newValue 进行劫持，并保存到 this.value 中
         // apply modifier
         newValue = this.enhancer(newValue, this.value, this.name)
         return this.equals(this.value, newValue) ? globalState.UNCHANGED : newValue

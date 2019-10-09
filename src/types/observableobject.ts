@@ -83,6 +83,7 @@ export class ObservableObjectAdministration
 
     constructor(
         public target: any,
+        // 对象管理器围绕 values 展开，在 addObservableProp 方法中填充 values
         public values = new Map<PropertyKey, ObservableValue<any> | ComputedValue<any>>(),
         public name: string,
         public defaultEnhancer: IEnhancer<any>
@@ -113,6 +114,7 @@ export class ObservableObjectAdministration
             if (!change) return
             newValue = (change as any).newValue
         }
+        // NOTE: 将新值进行劫持
         newValue = (observable as any).prepareNewValue(newValue)
 
         // notify spy & observers
@@ -175,13 +177,26 @@ export class ObservableObjectAdministration
             if (!change) return
             newValue = (change as any).newValue
         }
+        // NOTE: 真正的劫持：使用 enhancer 观察 newValue
+        // ObservableValue 内部通过 enhancer 进行递归劫持
+        // { a: { d: { e: 1 } }, b: 2, c: [3, 4] } 会劫持成
+        // ObservableValue {
+        //     a: ObservableValue {
+        //         d: ObservableValue { e: 1 }
+        //     },
+        //     b: 2,
+        //     c: ObservableArray { 3, 4 }
+        // }
         const observable = new ObservableValue(
             newValue,
             enhancer,
             `${this.name}.${stringifyKey(propName)}`,
             false
         )
-        this.values.set(propName, observable)
+
+        // NOTE: 每个对象都有唯一的 Administration，values 中存储着该对象的所有 key，值为 ObservableValue
+        // src/api/object-api.ts 提供的 set 方法也可以改变 values
+        this.values.set(propName, observable) // 填充 values
         newValue = (observable as any).value // observableValue might have changed it
 
         Object.defineProperty(target, propName, generateObservablePropConfig(propName))
@@ -341,14 +356,15 @@ export function asObservableObject(
         name = (target.constructor.name || "ObservableObject") + "@" + getNextId()
     if (!name) name = "ObservableObject@" + getNextId()
 
+    // 拿到 observableobject，里面封装着劫持和对象操作的 api
     const adm = new ObservableObjectAdministration(
         target,
         new Map(),
         stringifyKey(name),
         defaultEnhancer
     )
-    addHiddenProp(target, $mobx, adm)
-    return adm
+    addHiddenProp(target, $mobx, adm) // 给 target 添加 $mobx 属性，方便直接获取 adm
+    return adm // 返回这个 object 的管理器
 }
 
 const observablePropertyConfigs = Object.create(null)

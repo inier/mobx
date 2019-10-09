@@ -75,6 +75,7 @@ function getEnhancerFromOptions(options: CreateObservableOptions): IEnhancer<any
 
 /**
  * Turns an object, array or function into a reactive structure.
+ * NOTE: entry 即 @observable something = ... 函数内部会做判断那种类型如何 observe
  * @param v the value which should become observable.
  */
 function createObservable(v: any, arg2?: any, arg3?: any) {
@@ -86,6 +87,7 @@ function createObservable(v: any, arg2?: any, arg3?: any) {
     // it is an observable already, done
     if (isObservable(v)) return v
 
+    // observable 即为 createObservable（通过 observableFactories 给挂上 .object, .array 等方法)
     // something that can be converted and mutated?
     const res = isPlainObject(v)
         ? observable.object(v, arg2, arg3)
@@ -178,19 +180,23 @@ const observableFactories: IObservableFactories = {
         return new ObservableSet<T>(initialValues, getEnhancerFromOptions(o), o.name)
     },
     object<T = any>(
-        props: T,
+        props: T, // 当前劫持的对象或该对象的 key 对应的值（递归劫持）
         decorators?: { [K in keyof T]: Function },
         options?: CreateObservableOptions
     ): T & IObservableObject {
         if (typeof arguments[1] === "string") incorrectlyUsedAsDecorator("object")
         const o = asCreateObservableOptions(options)
-        if (o.proxy === false) {
+        if (o.proxy === false) { // 不传多余参数 proxy 默认为 true
             return extendObservable({}, props, decorators, o) as any
         } else {
+            // 劫持对象默认使用 deepEnhancer，所以不像劫持其他类型需要调用 getEnhancerFromOptions 确认下
+            // 获取 deepDecorator，由 createDecoratorForEnhancer 生成（deepDecorator 下面挂了 deepEnhancer 属性）
             const defaultDecorator = getDefaultDecoratorFromObjectOptions(o)
+            // proxy 劫持也需初始化 base，添加 mobxDidRunLazyInitializersSymbol 属性等操作
+            // extendObservable 传新对象 {} 来进行后续的操作，不影响原值
             const base = extendObservable({}, undefined, undefined, o) as any
-            const proxy = createDynamicObservableObject(base)
-            extendObservableObjectWithProperties(proxy, props, decorators, defaultDecorator)
+            const proxy = createDynamicObservableObject(base) // 如果可以用 proxy，走 proxy 劫持
+            extendObservableObjectWithProperties(proxy, props, decorators, defaultDecorator) // 劫持 props
             return proxy
         }
     },

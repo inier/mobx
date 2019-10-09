@@ -81,7 +81,7 @@ export function extendObservableObjectWithProperties(
     startBatch()
     try {
         const keys = getPlainObjectKeys(properties)
-        for (const key of keys) {
+        for (const key of keys) { // NOTE: 将 object 当前层（要考虑递归）的 key 遍历进行劫持
             const descriptor = Object.getOwnPropertyDescriptor(properties, key)!
             if (process.env.NODE_ENV !== "production") {
                 if (!isPlainObject(properties))
@@ -101,7 +101,7 @@ export function extendObservableObjectWithProperties(
                 decorators && key in decorators
                     ? decorators[key]
                     : descriptor.get
-                    ? computedDecorator
+                    ? computedDecorator // @computed something = ...
                     : defaultDecorator
             if (process.env.NODE_ENV !== "production" && typeof decorator !== "function")
                 fail(`Not a valid decorator for '${stringifyKey(key)}', got: ${decorator}`)
@@ -110,6 +110,7 @@ export function extendObservableObjectWithProperties(
             if (
                 resultDescriptor // otherwise, assume already applied, due to `applyToInstance`
             )
+                // 将 resultDescriptor 赋值给已经初始化后的空对象 target 中
                 Object.defineProperty(target, key, resultDescriptor)
         }
     } finally {
