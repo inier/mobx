@@ -78,6 +78,7 @@ export interface IArrayWillSplice<T = any> {
     removedCount: number
 }
 
+// 将 arrayExtensions 的 api 代理到 observablearray 上
 const arrayTraps = {
     get(target, name) {
         if (name === $mobx) return target[$mobx]
@@ -121,21 +122,24 @@ export function createObservableArray<T>(
     owned = false
 ): IObservableArray<T> {
     const adm = new ObservableArrayAdministration(name, enhancer, owned)
+    // 添加 hidden 的 $mobx 属性，方便给用户暴露 api
     addHiddenFinalProp(adm.values, $mobx, adm)
+    // 给 values 挂上各种 api，含 mobx 的 api 和原生 array api
     const proxy = new Proxy(adm.values, arrayTraps) as any
     adm.proxy = proxy
     if (initialValues && initialValues.length) {
         const prev = allowStateChangesStart(true)
-        adm.spliceWithArray(0, 0, initialValues)
+        adm.spliceWithArray(0, 0, initialValues) // NOTE: 在此处初始化数组
         allowStateChangesEnd(prev)
     }
+    // NOTE: 整个 @observable arr 最终返回的是个 proxy，里面为 adm.values 挂上各种 api
     return proxy
 }
 
 class ObservableArrayAdministration
     implements IInterceptable<IArrayWillChange<any> | IArrayWillSplice<any>>, IListenable {
     atom: IAtom
-    values: any[] = []
+    values: any[] = [] // 整个 adm 围绕 values 展开，在 initialValues 赋值后完成劫持
     interceptors
     changeListeners
     enhancer: (newV: any, oldV: any | undefined) => any
@@ -233,14 +237,20 @@ class ObservableArrayAdministration
             newItems = change.added
         }
 
-        newItems = newItems.length === 0 ? newItems : newItems.map(v => this.enhancer(v, undefined))
+        // 使用 enhancer 劫持，newItems.map 返回了新的数组，@observable arr 也是不改变原数组的
+        newItems = newItems.length === 0 ? newItems : newItems.map(v => {
+            // 使用 enhancer 根据子项的类型进行递归劫持
+            return this.enhancer(v, undefined)
+        })
         if (process.env.NODE_ENV !== "production") {
             const lengthDelta = newItems.length - deleteCount
             this.updateArrayLength(length, lengthDelta) // checks if internal array wasn't modified
         }
+        // 将劫持后的 array 插入到 this.values 中
         const res = this.spliceItemsIntoValues(index, deleteCount, newItems)
 
         if (deleteCount !== 0 || newItems.length !== 0) this.notifyArraySplice(index, newItems, res)
+        // 有 dehancer 的话将 values 过滤一遍再返回
         return this.dehanceValues(res)
     }
 
@@ -304,6 +314,7 @@ class ObservableArrayAdministration
     }
 }
 
+// 调用 adm 万金油（spliceWithArray）或原生 api 进行对 values 的操作
 const arrayExtensions = {
         intercept(handler: IInterceptor<IArrayWillChange<any> | IArrayWillSplice<any>>): Lambda {
             return this[$mobx].intercept(handler)
@@ -490,6 +501,8 @@ const arrayExtensions = {
     "toString",
     "toLocaleString"
 ].forEach(funcName => {
+    // 重写数组的 api，通过 adm 包一层可以获取 change + report
+    // forEach 的都是不改变原数组的 api，直接调用 adm.values[funcName] 即可
     arrayExtensions[funcName] = function() {
         const adm: ObservableArrayAdministration = this[$mobx]
         adm.atom.reportObserved()

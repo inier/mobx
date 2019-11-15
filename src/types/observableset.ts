@@ -78,6 +78,7 @@ export class ObservableSet<T = any> implements Set<T>, IInterceptable<ISetWillCh
         this.enhancer = (newV, oldV) => enhancer(newV, oldV, name)
 
         if (initialData) {
+            // this._data.clear(), foreach + this._data.add(new ObservableValue(value))
             this.replace(initialData)
         }
     }

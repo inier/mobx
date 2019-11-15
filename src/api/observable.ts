@@ -192,7 +192,7 @@ const observableFactories: IObservableFactories = {
             // 劫持对象默认使用 deepEnhancer，所以不像劫持其他类型需要调用 getEnhancerFromOptions 确认下
             // 获取 deepDecorator，由 createDecoratorForEnhancer 生成（deepDecorator 下面挂了 deepEnhancer 属性）
             const defaultDecorator = getDefaultDecoratorFromObjectOptions(o)
-            // proxy 劫持也需初始化 base，添加 mobxDidRunLazyInitializersSymbol 属性等操作
+            // proxy 劫持也需初始化 base，给空对象添加 adm，mobxDidRunLazyInitializersSymbol 等属性
             // extendObservable 传新对象 {} 来进行后续的操作，不影响原值
             const base = extendObservable({}, undefined, undefined, o) as any
             const proxy = createDynamicObservableObject(base) // 如果可以用 proxy，走 proxy 劫持

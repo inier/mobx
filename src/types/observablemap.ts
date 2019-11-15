@@ -99,8 +99,13 @@ export class ObservableMap<K = any, V = any>
                 "mobx.map requires Map polyfill for the current browser. Check babel-polyfill or core-js/es6/map.js"
             )
         }
+        // 维护两个 Map，_data 为 initialData 的拷贝版，_hasMap 缓存 keys
+        // 因此 ObservableMap 本身就可以维护键值对，不需要像 observablearray 使用 adm
+        // 而 _data 的值则直接可以 enhancer 劫持后转成 ObservableValue
         this._data = new Map()
         this._hasMap = new Map()
+        // 将 initialData 初始化给 _data
+        // foreach + this._data.set(key, new ObservableValue(value))
         this.merge(initialData)
     }
 
@@ -308,6 +313,7 @@ export class ObservableMap<K = any, V = any>
         if (isObservableMap(other)) {
             other = other.toJS()
         }
+        // 根据 other 的类型，进行不同的 this.set 操作
         transaction(() => {
             if (isPlainObject(other))
                 getPlainObjectKeys(other).forEach(key => this.set((key as any) as K, other[key]))
