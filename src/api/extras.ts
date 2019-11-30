@@ -18,6 +18,7 @@ function nodeToDependencyTree(node: IDepTreeNode): IDependencyTree {
     const result: IDependencyTree = {
         name: node.name
     }
+    // 从 reaction 记录到的 observing 用在此处，好导出 api getDependencyTree
     if (node.observing && node.observing.length > 0)
         result.dependencies = unique(node.observing).map(nodeToDependencyTree)
     return result

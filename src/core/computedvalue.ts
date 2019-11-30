@@ -66,6 +66,9 @@ export interface IComputedValueOptions<T> {
  *
  * If at any point it's outside batch and it isn't observed: reset everything and go to 1.
  */
+// NOTE: 同时实现了 IObservable 和 IDerivation 接口
+// 因为 ComputedValue 既可以监听 observableValue，他们的改变会触发 compute 的重新计算，
+// 同时它也可以被 autorun 中的 reaction 依赖
 export class ComputedValue<T> implements IObservable, IComputedValue<T>, IDerivation {
     dependenciesState = IDerivationState.NOT_TRACKING
     observing: IObservable[] = [] // nodes we are looking at. Our value depends on these nodes
@@ -153,7 +156,10 @@ export class ComputedValue<T> implements IObservable, IComputedValue<T>, IDeriva
                 endBatch()
             }
         } else {
+            // ComputedValue 不仅会把自己 reportObserved 给 reaction
             reportObserved(this)
+            // 同时自己也是 IDerivation 的派生类，通过 trackAndCompute（里面会调用 trackDerivedFunction）来取值
+            // 如果 trackAndCompute 返回 true，即值改变了，向监听自己的 observers 上报 change
             if (shouldCompute(this)) if (this.trackAndCompute()) propagateChangeConfirmed(this)
         }
         const result = this.value!
@@ -223,6 +229,9 @@ export class ComputedValue<T> implements IObservable, IComputedValue<T>, IDeriva
         globalState.computationDepth++
         let res: T | CaughtException
         if (track) {
+            // this.derivation 为该属性的 get 函数，从 addComputedProp 添加进来
+            // ComputedValue 是 IDerivation 的衍生类，scope 通过 .call 来指定获取 Store 的 this.derivation
+            // 在 trackDerivedFunction 中使用，可以理解为 view 函数
             res = trackDerivedFunction(this, this.derivation, this.scope)
         } else {
             if (globalState.disableErrorBoundaries === true) {

@@ -91,9 +91,9 @@ export function shouldCompute(derivation: IDerivation): boolean {
                 l = obs.length
             for (let i = 0; i < l; i++) {
                 const obj = obs[i]
-                if (isComputedValue(obj)) {
+                if (isComputedValue(obj)) { // 排除 ComputedValue
                     if (globalState.disableErrorBoundaries) {
-                        obj.get()
+                        obj.get() // untrackedStart 下调用 get，避免收集依赖
                     } else {
                         try {
                             obj.get()
@@ -163,6 +163,7 @@ export function checkIfStateModificationsAreAllowed(atom: IAtom) {
 export function trackDerivedFunction<T>(derivation: IDerivation, f: () => T, context: any) {
     // pre allocate array allocation + room for variation in deps
     // array will be trimmed by bindDependencies
+    // NOTE: 先将 derivation 和 observing 都置为 UP_TO_DATE，方便后续判断是否处在收集依赖阶段
     changeDependenciesStateTo0(derivation)
     derivation.newObserving = new Array(derivation.observing.length + 100)
     derivation.unboundDepsCount = 0
@@ -174,11 +175,16 @@ export function trackDerivedFunction<T>(derivation: IDerivation, f: () => T, con
         result = f.call(context)
     } else {
         try {
-            result = f.call(context)
+            // NOTE: 正式调用 view 函数
+            // autorun 第一次获取值时，通过 reportObserved 将 observableValue 上报给当前 reaction
+            // 并更新到刚初始化的 newObserving 中
+            result = f.call(context) // result 用于错误记录
         } catch (e) {
             result = new CaughtException(e)
         }
     }
+    // 在 f() 前后缓存 trackingDerivation，因为 ComputedValue 走 get 代理时也会调用 trackDerivedFunction
+    // 缓存是为了让中间进来的 derivation 能够收集到正确的依赖
     globalState.trackingDerivation = prevTracking
     bindDependencies(derivation)
     return result
@@ -202,9 +208,10 @@ function bindDependencies(derivation: IDerivation) {
         l = derivation.unboundDepsCount
     for (let i = 0; i < l; i++) {
         const dep = observing[i]
+        // 通过 get 代理新收集的依赖中，如果已经 addObserver 就忽略
         if (dep.diffValue === 0) {
             dep.diffValue = 1
-            if (i0 !== i) observing[i0] = dep
+            if (i0 !== i) observing[i0] = dep // 有忽略的 dep 时将当前 dep 前移
             i0++
         }
 
@@ -223,6 +230,8 @@ function bindDependencies(derivation: IDerivation) {
     //   1: it keeps being observed, don't want to notify it. change to 0
     l = prevObserving.length
     while (l--) {
+        // 新一轮更新中，如果还依赖了这个 dep 即 observableValue 会在上面遍历 new observables 时将其 diff 置为 1
+        // 这一轮更新不需要的依赖就 remove 掉
         const dep = prevObserving[l]
         if (dep.diffValue === 0) {
             removeObserver(dep, derivation)
@@ -235,11 +244,16 @@ function bindDependencies(derivation: IDerivation) {
     //   1: it wasn't observed, let's observe it. set back to 0
     while (i0--) {
         const dep = observing[i0]
+        // 筛选出正确的依赖后，如果没 observer 的就 add
         if (dep.diffValue === 1) {
             dep.diffValue = 0
+            // 给 observableValue 注册 observer
+            // value change 时 observable(object, array, set...) 调用 this.atom.reportChanged() 发送通知
+            // foreach 通知每个 reaction 调用 onBecomeStale，也就是 schedule 方法
             addObserver(dep, derivation)
         }
     }
+    // NOTE: 收集完的依赖保存到 reaction.observing 中，在 getDependencyTree api 中会调用到
 
     // Some new observed derivations may become stale during this derivation computation
     // so they have had no chance to propagate staleness (#916)
@@ -254,14 +268,17 @@ export function clearObserving(derivation: IDerivation) {
     const obs = derivation.observing
     derivation.observing = []
     let i = obs.length
-    while (i--) removeObserver(obs[i], derivation)
+    while (i--) removeObserver(obs[i], derivation) // 取消 reaction 的订阅
 
     derivation.dependenciesState = IDerivationState.NOT_TRACKING
 }
 
+// see: https://cn.mobx.js.org/refguide/api.html#untracked
 export function untracked<T>(action: () => T): T {
     const prev = untrackedStart()
     try {
+        // untrackedStart 把 globalState.trackingDerivation 置为 null
+        // 在 get 代理走 reportObserved 时便不会再收集 observableValue 的依赖
         return action()
     } finally {
         untrackedEnd(prev)
@@ -288,5 +305,6 @@ export function changeDependenciesStateTo0(derivation: IDerivation) {
 
     const obs = derivation.observing
     let i = obs.length
+    // 将 observing 都置为 UP_TO_DATE，方便 computedValue 进行 shouldCompute 判断
     while (i--) obs[i].lowestObserverState = IDerivationState.UP_TO_DATE
 }

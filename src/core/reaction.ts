@@ -56,7 +56,7 @@ export class Reaction implements IDerivation, IReactionPublic {
     dependenciesState = IDerivationState.NOT_TRACKING
     diffValue = 0
     runId = 0
-    unboundDepsCount = 0
+    unboundDepsCount = 0 // autorun 第一次执行时会收集依赖，通过 get 代理更新 unbound，然后再进行 bind 操作
     __mapid = "#" + getNextId()
     isDisposed = false
     _isScheduled = false
@@ -66,7 +66,7 @@ export class Reaction implements IDerivation, IReactionPublic {
 
     constructor(
         public name: string = "Reaction@" + getNextId(),
-        private onInvalidate: () => void,
+        private onInvalidate: () => void, // 作出反应的 effect 函数
         private errorHandler?: (error: any, derivation: IDerivation) => void
     ) {}
 
@@ -77,7 +77,9 @@ export class Reaction implements IDerivation, IReactionPublic {
     schedule() {
         if (!this._isScheduled) {
             this._isScheduled = true
+            // 将 this 放进全局 pendingReactions 队列里
             globalState.pendingReactions.push(this)
+            // 遍历 pendingReactions 并执行其 runReaction
             runReactions()
         }
     }
@@ -97,6 +99,8 @@ export class Reaction implements IDerivation, IReactionPublic {
                 this._isTrackPending = true
 
                 try {
+                    // 执行 view 函数，期间会通过 get 代理收集依赖放到 newObserving 中并更新 unboundDepsCount
+                    // 然后调用 addObserver 给 observableValue 注册进去当前的 Reaction
                     this.onInvalidate()
                     if (
                         this._isTrackPending &&
@@ -117,6 +121,7 @@ export class Reaction implements IDerivation, IReactionPublic {
         }
     }
 
+    // fn 里面包含了 view 函数
     track(fn: () => void) {
         if (this.isDisposed) {
             return
@@ -183,6 +188,7 @@ export class Reaction implements IDerivation, IReactionPublic {
             if (!this._isRunning) {
                 // if disposed while running, clean up later. Maybe not optimal, but rare case
                 startBatch()
+                // 拿到依赖的 observableValue，然后将当前 reaction delete 掉
                 clearObserving(this)
                 endBatch()
             }
@@ -223,6 +229,7 @@ let reactionScheduler: (fn: () => void) => void = f => f()
 
 export function runReactions() {
     // Trampolining, if runReactions are already running, new reactions will be picked up
+    // 在 runReactionsHelper 执行期间有值改变，reportChanged 会将 reaction 放到 pendingReactions 中并在此拦截住
     if (globalState.inBatch > 0 || globalState.isRunningReactions) return
     reactionScheduler(runReactionsHelper)
 }
@@ -235,6 +242,7 @@ function runReactionsHelper() {
     // While running reactions, new reactions might be triggered.
     // Hence we work with two variables and check whether
     // we converge to no remaining reactions after a while.
+    // 使用 while 是因为下面在调用 runReaction，可能会产生新的 pendingReactions，因此要继续执行
     while (allReactions.length > 0) {
         if (++iterations === MAX_REACTION_ITERATIONS) {
             console.error(
@@ -243,6 +251,7 @@ function runReactionsHelper() {
             )
             allReactions.splice(0) // clear reactions
         }
+        // 清空当前轮的 pendingReactions
         let remainingReactions = allReactions.splice(0)
         for (let i = 0, l = remainingReactions.length; i < l; i++)
             remainingReactions[i].runReaction()

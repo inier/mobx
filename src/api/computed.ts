@@ -31,6 +31,7 @@ export const computedDecorator = createPropDecorator(
         // Forcing instance now, fixes hot reloadig issues on React Native:
         const options = decoratorArgs[0] || {}
         asObservableObject(instance).addComputedProp(instance, propertyName, {
+            // 获取到 Store 原来的 get，set 并绑定给 adm 的 propertyName 的 get 和 set
             get,
             set,
             context: instance,

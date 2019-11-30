@@ -97,6 +97,7 @@ export function createPropDecorator(
                 const inheritedDecorators = target[mobxPendingDecorators]
                 addHiddenProp(target, mobxPendingDecorators, { ...inheritedDecorators })
             }
+            // 缓存 decorators，调用属性时才在 initializeInstance 正式挂上
             target[mobxPendingDecorators]![prop] = {
                 prop,
                 propertyCreator, // 在 initializeInstance 中调用
@@ -104,7 +105,7 @@ export function createPropDecorator(
                 decoratorTarget: target,
                 decoratorArguments
             }
-            // 返回 descriptor
+            // 返回 descriptor，为 cache 做代理
             return createPropertyInitializerDescriptor(prop, propertyInitiallyEnumerable)
         }
 

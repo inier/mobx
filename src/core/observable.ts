@@ -68,6 +68,8 @@ export function addObserver(observable: IObservable, node: IDerivation) {
     // invariantObservers(observable);
 
     observable.observers.add(node)
+    // bindDependencies 中调用 addObserver 时，f.call() 已经收集完 node 的依赖
+    // 所以 observable 的状态不能高于 node
     if (observable.lowestObserverState > node.dependenciesState)
         observable.lowestObserverState = node.dependenciesState
 
@@ -117,6 +119,7 @@ export function endBatch() {
                 if (observable.isBeingObserved) {
                     // if this observable had reactive observers, trigger the hooks
                     observable.isBeingObserved = false
+                    // 遍历 unobservedListeners
                     observable.onBecomeUnobserved()
                 }
                 if (observable instanceof ComputedValue) {
@@ -131,7 +134,10 @@ export function endBatch() {
 }
 
 export function reportObserved(observable: IObservable): boolean {
+    // NOTE: get 代理，通过这里将 observable 上报给正在收集依赖的 reaction
+    // 而 reaction 是通过 reaction.schedule push 到 globalState 中的
     const derivation = globalState.trackingDerivation
+    // 判断当前是否有 track 的 reaction，如果没有（可能是包在 untracked 中执行的），则退出
     if (derivation !== null) {
         /**
          * Simple optimization, give each derivation run an unique id (runId)
@@ -139,9 +145,11 @@ export function reportObserved(observable: IObservable): boolean {
          * if this is the case, the relation is already known
          */
         if (derivation.runId !== observable.lastAccessedBy) {
+            // 将 lastAccessedBy 置为 runId，标志着这轮收集依赖，这个 observable 已经处理过了
             observable.lastAccessedBy = derivation.runId
             // Tried storing newObserving, or observing, or both as Set, but performance didn't come close...
             derivation.newObserving![derivation.unboundDepsCount++] = observable
+            // computedValue 依赖的 observableValue 在 reaction 中可能已经处理了
             if (!observable.isBeingObserved) {
                 observable.isBeingObserved = true
                 observable.onBecomeObserved()
@@ -180,6 +188,7 @@ export function reportObserved(observable: IObservable): boolean {
 export function propagateChanged(observable: IObservable) {
     // invariantLOS(observable, "changed start");
     if (observable.lowestObserverState === IDerivationState.STALE) return
+    // 有值改变 lowestObserverState 就置为 STALE，并通知给依赖它的 derivation
     observable.lowestObserverState = IDerivationState.STALE
 
     // Ideally we use for..of here, but the downcompiled version is really slow...
@@ -201,9 +210,13 @@ export function propagateChangeConfirmed(observable: IObservable) {
     if (observable.lowestObserverState === IDerivationState.STALE) return
     observable.lowestObserverState = IDerivationState.STALE
 
+    // autorun 中打印 computedValue：第一次 computedValue 计算完自己的依赖后，reaction 还没有开始依赖它
     observable.observers.forEach(d => {
+        // computedValue 经计算后确认为 STALE，那依赖它的 derivation 也变为 STALE
         if (d.dependenciesState === IDerivationState.POSSIBLY_STALE)
             d.dependenciesState = IDerivationState.STALE
+        // 如果刚好是在计算 d 时（状态为 UP_TO_DATE），computedValue 递归并提交改变 的话
+        // 需要恢复 changeDependenciesStateTo0 的工作，以便继续 trackDerivedFunction 计算 d
         else if (
             d.dependenciesState === IDerivationState.UP_TO_DATE // this happens during computing of `d`, just keep lowestObserverState up to date.
         )

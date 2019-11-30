@@ -370,6 +370,7 @@ export function asObservableObject(
 const observablePropertyConfigs = Object.create(null)
 const computedPropertyConfigs = Object.create(null)
 
+// NOTE: initializeInstance 之后，下次就直接走这里，通过 $mobx 操作值
 export function generateObservablePropConfig(propName) {
     return (
         observablePropertyConfigs[propName] ||

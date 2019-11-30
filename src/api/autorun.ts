@@ -26,7 +26,7 @@ export interface IAutorunOptions {
  * @returns disposer function, which can be used to stop the view from being updated in the future.
  */
 export function autorun(
-    view: (r: IReactionPublic) => any,
+    view: (r: IReactionPublic) => any, // 数据变化后需要执行的函数，入参为 Reaction
     opts: IAutorunOptions = EMPTY_OBJECT
 ): IReactionDisposer {
     if (process.env.NODE_ENV !== "production") {
@@ -38,19 +38,22 @@ export function autorun(
     }
 
     const name: string = (opts && opts.name) || (view as any).name || "Autorun@" + getNextId()
-    const runSync = !opts.scheduler && !opts.delay
+    const runSync = !opts.scheduler && !opts.delay // 检查是否同步
     let reaction: Reaction
 
     if (runSync) {
         // normal autorun
         reaction = new Reaction(
             name,
+            // 通过 function 的方式定义函数，this 指向 Reaction
             function(this: Reaction) {
+                // 真正连接 view 和 reaction 是 reaction.track
                 this.track(reactionRunner)
             },
             opts.onError
         )
     } else {
+        // 有自定义 scheduler、delay 的话，就用 setTimeout 包一层
         const scheduler = createSchedulerFromOptions(opts)
         // debounced autorun
         let isScheduled = false
@@ -71,10 +74,12 @@ export function autorun(
     }
 
     function reactionRunner() {
-        view(reaction)
+        view(reaction) // 入参当前 reaction
     }
 
+    // 将 reaction 放进全局 pendingReactions 队列里，里面会立即执行一次 view
     reaction.schedule()
+    // 返回 取消订阅依赖的 disposer
     return reaction.getDisposer()
 }
 
@@ -93,8 +98,9 @@ function createSchedulerFromOptions(opts: IReactionOptions) {
             : run
 }
 
+// reaction api，autorun 的变种
 export function reaction<T>(
-    expression: (r: IReactionPublic) => T,
+    expression: (r: IReactionPublic) => T, // 设置观察的数据
     effect: (arg: T, r: IReactionPublic) => void,
     opts: IReactionOptions = EMPTY_OBJECT
 ): IReactionDisposer {
@@ -106,6 +112,7 @@ export function reaction<T>(
         invariant(typeof opts === "object", "Third argument of reactions should be an object")
     }
     const name = opts.name || "Reaction@" + getNextId()
+    // 封装 effect
     const effectAction = action(
         name,
         opts.onError ? wrapErrorHandler(opts.onError, effect) : effect
@@ -143,6 +150,7 @@ export function reaction<T>(
             changed = firstTime || !equals(value, nextValue)
             value = nextValue
         })
+        // 第一次或数据变化后执行 effect
         if (firstTime && opts.fireImmediately!) effectAction(value, r)
         if (!firstTime && (changed as boolean) === true) effectAction(value, r)
         if (firstTime) firstTime = false
