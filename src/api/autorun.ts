@@ -46,8 +46,9 @@ export function autorun(
         reaction = new Reaction(
             name,
             // 通过 function 的方式定义函数，this 指向 Reaction
+            // 大概来说，onInvalidate 的目的就是引起重新渲染，或者说是重新收集依赖
             function(this: Reaction) {
-                // 真正连接 view 和 reaction 是 reaction.track
+                // 调用 schedule 到这，通过 track 去执行 view
                 this.track(reactionRunner)
             },
             opts.onError
@@ -74,7 +75,8 @@ export function autorun(
     }
 
     function reactionRunner() {
-        view(reaction) // 入参当前 reaction
+        // 入参为当前 reaction
+        view(reaction)
     }
 
     // 将 reaction 放进全局 pendingReactions 队列里，里面会立即执行一次 view
@@ -99,8 +101,9 @@ function createSchedulerFromOptions(opts: IReactionOptions) {
 }
 
 // reaction api，autorun 的变种
+// 粗略地讲，reaction 是 computed(expression).observe(action(sideEffect)) 或 autorun(() => action(sideEffect)(expression)) 的语法糖
 export function reaction<T>(
-    expression: (r: IReactionPublic) => T, // 设置观察的数据
+    expression: (r: IReactionPublic) => T, // 主动申明监听的数据
     effect: (arg: T, r: IReactionPublic) => void,
     opts: IReactionOptions = EMPTY_OBJECT
 ): IReactionDisposer {
@@ -112,7 +115,7 @@ export function reaction<T>(
         invariant(typeof opts === "object", "Third argument of reactions should be an object")
     }
     const name = opts.name || "Reaction@" + getNextId()
-    // 封装 effect
+    // 副作用可能引起值改变，用 action（untracked 和 allowStateChanges）包住
     const effectAction = action(
         name,
         opts.onError ? wrapErrorHandler(opts.onError, effect) : effect
@@ -145,18 +148,19 @@ export function reaction<T>(
         isScheduled = false // Q: move into reaction runner?
         if (r.isDisposed) return
         let changed = false
+        // track 中调用 trackDerivedFunction，只会收集 expression 中的依赖，判断是否改变后单独执行 effect
         r.track(() => {
             const nextValue = expression(r)
             changed = firstTime || !equals(value, nextValue)
-            value = nextValue
+            value = nextValue // 通过闭包缓存 nextValue，供下次做比较
         })
-        // 第一次或数据变化后执行 effect
         if (firstTime && opts.fireImmediately!) effectAction(value, r)
+        // 与 track 分开，数据变化后才执行 effectAction
         if (!firstTime && (changed as boolean) === true) effectAction(value, r)
         if (firstTime) firstTime = false
     }
 
-    r.schedule()
+    r.schedule() // 第一次执行，最终会调 reactionRunner
     return r.getDisposer()
 }
 

@@ -62,6 +62,8 @@ export class Atom implements IAtom {
      * Invoke this method _after_ this method has changed to signal mobx that all its observers should invalidate.
      */
     public reportChanged() {
+        // 无 inBatch 下，值的改变引起的会先加锁，调用 onBecomeStale 会在 runReactions 会拦截住
+        // 在 endBatch 中会再调 runReactions 来处理 reaction
         startBatch()
         propagateChanged(this)
         endBatch()

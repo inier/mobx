@@ -145,6 +145,7 @@ export function checkIfStateModificationsAreAllowed(atom: IAtom) {
                 }`
         )
     // Should not be possible to change observed state outside strict mode, except during initialization, see #563
+    // 判断 enforceActions 是否允许非 action 改变
     if (!globalState.allowStateChanges && (hasObservers || globalState.enforceActions === "strict"))
         fail(
             process.env.NODE_ENV !== "production" &&
@@ -176,8 +177,8 @@ export function trackDerivedFunction<T>(derivation: IDerivation, f: () => T, con
     } else {
         try {
             // NOTE: 正式调用 view 函数
-            // autorun 第一次获取值时，通过 reportObserved 将 observableValue 上报给当前 reaction
-            // 并更新到刚初始化的 newObserving 中
+            // 通过 reportObserved 将依赖上报给当前 reaction，并更新到刚初始化的 newObserving 中
+            // 整个 view 的调用完成 derivation 对 observableValue 的依赖收集
             result = f.call(context) // result 用于错误记录
         } catch (e) {
             result = new CaughtException(e)
@@ -186,6 +187,7 @@ export function trackDerivedFunction<T>(derivation: IDerivation, f: () => T, con
     // 在 f() 前后缓存 trackingDerivation，因为 ComputedValue 走 get 代理时也会调用 trackDerivedFunction
     // 缓存是为了让中间进来的 derivation 能够收集到正确的依赖
     globalState.trackingDerivation = prevTracking
+    // 整个 bind 完成 observableValue 对 derivation 的绑定与解绑
     bindDependencies(derivation)
     return result
 }

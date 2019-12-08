@@ -30,7 +30,7 @@ export function createAction(actionName: string, fn: Function, ref?: Object): Fu
 }
 
 export function executeAction(actionName: string, fn: Function, scope?: any, args?: IArguments) {
-    const runInfo = _startAction(actionName, scope, args)
+    const runInfo = _startAction(actionName, scope, args) // untracked 方式运行
     try {
         return fn.apply(scope, args)
     } catch (err) {
@@ -66,9 +66,12 @@ export function _startAction(actionName: string, scope: any, args?: IArguments):
             arguments: flattendArgs
         })
     }
+    // untrack globalState.trackingDerivation，即在 action 期间不进行依赖收集（get 代理）
     const prevDerivation = untrackedStart()
+    // 锁住 inBatch，即在 action 期间也不进行实际的 runReactions
+    // 期间 set 代理 push 的 globalState.pendingReactions，将在 endBatch inBatch 降为 0，依次执行
     startBatch()
-    const prevAllowStateChanges = allowStateChangesStart(true)
+    const prevAllowStateChanges = allowStateChangesStart(true) // 将允许改变设为 true
     const runInfo = {
         prevDerivation,
         prevAllowStateChanges,

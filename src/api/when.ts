@@ -25,6 +25,7 @@ export function when(
 ): IReactionDisposer
 export function when(predicate: any, arg1?: any, arg2?: any): any {
     if (arguments.length === 1 || (arg1 && typeof arg1 === "object"))
+        // 没有传 effect 会返回一个 promise，供 async await 使用
         return whenPromise(predicate, arg1)
     return _when(predicate, arg1, arg2 || {})
 }
@@ -43,8 +44,10 @@ function _when(predicate: () => boolean, effect: Lambda, opts: IWhenOptions): IR
     }
 
     opts.name = opts.name || "When@" + getNextId()
+    // 副作用可能引起值改变，用 action 包住
     const effectAction = createAction(opts.name + "-effect", effect as Function)
     const disposer = autorun(r => {
+        // 返回真，才执行 effect
         if (predicate()) {
             r.dispose()
             if (timeoutHandle) clearTimeout(timeoutHandle)

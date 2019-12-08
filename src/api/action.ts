@@ -74,6 +74,7 @@ export const action: IActionFactory = function action(arg1, arg2?, arg3?, arg4?)
 
 action.bound = boundActionDecorator as any
 
+// runInAction(f) 是 action(f)() 的语法糖
 export function runInAction<T>(block: () => T): T
 export function runInAction<T>(name: string, block: () => T): T
 export function runInAction(arg1, arg2?) {
